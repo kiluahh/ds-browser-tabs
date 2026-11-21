@@ -6,7 +6,16 @@ const api = globalThis.browser ?? globalThis.chrome
 
 const FETCH_TIMEOUT_MS = 3_000
 const REVIVE_ALARM = 'dsh-browser-tabs-revive'
-const CLIENT_ID = 'dsh-browser-tabs'
+/** Which browser this worker runs in, for the Host's job routing. */
+function browserName() {
+  const ua = navigator.userAgent
+  if (/firefox/iu.test(ua)) return 'Firefox'
+  if (/edg\//iu.test(ua)) return 'Edge'
+  if (/chrome/iu.test(ua)) return 'Chrome'
+  return 'Browser'
+}
+
+const CLIENT_ID = `${browserName()}-${Math.random().toString(36).slice(2, 8)}`
 let polling = false
 
 /** Read the host address and optional token the user saved in the popup. */
@@ -94,8 +103,9 @@ async function listTabs() {
   return {
     ok: true,
     data: {
+      browser: browserName(),
       tabs: tabs
-        .filter((tab) => tab.url && !/^(chrome|edge|about|devtools|chrome-extension):/u.test(tab.url))
+        .filter((tab) => tab.url && !/^(chrome|edge|about|devtools|chrome-extension|moz-extension):/u.test(tab.url))
         .map((tab) => ({ id: tab.id, title: tab.title, url: tab.url, active: tab.active === true })),
     },
   }
@@ -110,6 +120,18 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 let socket
 
+/** True when this browser has the DSH page open somewhere. */
+async function dshTabOpen() {
+  try {
+    const { host } = await settings()
+    const origin = new URL(host).origin
+    const tabs = await api.tabs.query({})
+    return tabs.some((tab) => typeof tab.url === 'string' && tab.url.startsWith(origin))
+  } catch {
+    return false
+  }
+}
+
 /** Keep one WebSocket open: Chrome and Firefox both extend worker lifetime on socket traffic. */
 async function connectSocket() {
   if (socket !== undefined) return
@@ -119,7 +141,15 @@ async function connectSocket() {
     url = `${host.replace(/^http/u, 'ws')}/dsh-browser-tabs/ws`
     socket = new WebSocket(url)
     socket.addEventListener('open', () => {
-      socket?.send(JSON.stringify({ type: 'hello', clientId: CLIENT_ID, token }))
+      void (async () => {
+        socket?.send(JSON.stringify({
+          type: 'hello',
+          clientId: CLIENT_ID,
+          token,
+          browser: browserName(),
+          hasDsh: await dshTabOpen(),
+        }))
+      })()
     })
     socket.addEventListener('message', (event) => { void onSocketMessage(event.data) })
     socket.addEventListener('close', () => {
@@ -142,7 +172,7 @@ async function onSocketMessage(raw) {
     return
   }
   if (message?.type === 'ping') {
-    safeSend({ type: 'pong' })
+    safeSend({ type: 'pong', hasDsh: await dshTabOpen() })
     return
   }
   if (message?.type !== 'job') return

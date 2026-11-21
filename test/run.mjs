@@ -325,6 +325,49 @@ ok('accept-key 与 RFC 示例一致', acceptKey('dGhlIHNhbXBsZSBub25jZQ==') === 
   server.close()
 }
 
+{
+  // 两个浏览器同时连接时，任务必须发给"开着 DSH"的那个
+  const bridge = createBridge({ timeoutMs: 5000, onlineWindowMs: 50 })
+  const transport = createTransport({ bridge, config: { token: '' }, flushEveryMs: 20, pingEveryMs: 5_000 })
+  const server = createServer((_req, res) => res.end('ok'))
+  server.on('upgrade', (req, socket, head) => transport.handleUpgrade(req, socket, head))
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  const url = `ws://127.0.0.1:${port}/dsh-browser-tabs/ws`
+
+  const connect = async (hello) => {
+    const seen = []
+    const socket = new WebSocket(url)
+    socket.addEventListener('message', (event) => seen.push(JSON.parse(event.data)))
+    socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'hello', ...hello })))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    return { socket, seen }
+  }
+
+  const firefox = await connect({ clientId: 'ff', browser: 'Firefox', hasDsh: false })
+  const chrome = await connect({ clientId: 'cr', browser: 'Chrome', hasDsh: true })
+
+  const pending = bridge.request({ kind: 'list' })
+  const until = async (predicate, timeoutMs = 1500) => {
+    const started = Date.now()
+    while (Date.now() - started < timeoutMs) {
+      if (predicate()) return true
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    return false
+  }
+  ok('任务投给开着 DSH 的浏览器', await until(() => chrome.seen.some((m) => m.type === 'job')))
+  ok('另一个浏览器不会收到任务', !firefox.seen.some((m) => m.type === 'job'))
+  const job = chrome.seen.find((m) => m.type === 'job')
+  chrome.socket.send(JSON.stringify({ type: 'result', id: job.id, ok: true, data: { browser: 'Chrome', tabs: [] } }))
+  ok('结果照常结算', (await pending).browser === 'Chrome')
+
+  firefox.socket.close()
+  chrome.socket.close()
+  transport.dispose()
+  server.close()
+}
+
 // ---------------------------------------------------------------------------
 section('host assembly')
 
