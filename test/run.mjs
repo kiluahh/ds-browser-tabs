@@ -344,8 +344,9 @@ ok('accept-key 与 RFC 示例一致', acceptKey('dGhlIHNhbXBsZSBub25jZQ==') === 
     return { socket, seen }
   }
 
-  const firefox = await connect({ clientId: 'ff', browser: 'Firefox', hasDsh: false })
-  const chrome = await connect({ clientId: 'cr', browser: 'Chrome', hasDsh: true })
+  // 两个浏览器都开着 DSH，只有 Chrome 的窗口是聚焦的
+  const firefox = await connect({ clientId: 'ff', browser: 'Firefox', hasDsh: true, dshFocused: false })
+  const chrome = await connect({ clientId: 'cr', browser: 'Chrome', hasDsh: true, dshFocused: true })
 
   const pending = bridge.request({ kind: 'list' })
   const until = async (predicate, timeoutMs = 1500) => {
@@ -356,11 +357,21 @@ ok('accept-key 与 RFC 示例一致', acceptKey('dGhlIHNhbXBsZSBub25jZQ==') === 
     }
     return false
   }
-  ok('任务投给开着 DSH 的浏览器', await until(() => chrome.seen.some((m) => m.type === 'job')))
+  ok('任务投给 DSH 正在使用的浏览器', await until(() => chrome.seen.some((m) => m.type === 'job')))
   ok('另一个浏览器不会收到任务', !firefox.seen.some((m) => m.type === 'job'))
   const job = chrome.seen.find((m) => m.type === 'job')
   chrome.socket.send(JSON.stringify({ type: 'result', id: job.id, ok: true, data: { browser: 'Chrome', tabs: [] } }))
   ok('结果照常结算', (await pending).browser === 'Chrome')
+
+  // 焦点切到 Firefox 后，后续任务必须改投 Firefox（即使 Chrome 更新）
+  chrome.socket.send(JSON.stringify({ type: 'state', hasDsh: true, dshFocused: false }))
+  firefox.socket.send(JSON.stringify({ type: 'state', hasDsh: true, dshFocused: true }))
+  await new Promise((resolve) => setTimeout(resolve, 80))
+  const second = bridge.request({ kind: 'list' })
+  ok('焦点切换后任务改投 Firefox', await until(() => firefox.seen.some((m) => m.type === 'job')))
+  const secondJob = firefox.seen.find((m) => m.type === 'job')
+  firefox.socket.send(JSON.stringify({ type: 'result', id: secondJob.id, ok: true, data: { browser: 'Firefox', tabs: [] } }))
+  ok('第二次结果也结算', (await second).browser === 'Firefox')
 
   firefox.socket.close()
   chrome.socket.close()

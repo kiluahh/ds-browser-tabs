@@ -121,17 +121,42 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 let socket
 let looping = false
 
-/** True when this browser has the DSH page open somewhere. */
-async function dshTabOpen() {
+// Which browser window has OS focus. The browser the user is typing in wins;
+// with DSH open in two browsers, "has a DSH tab" alone cannot tell them apart.
+let focusedWindowId
+
+/** Whether this browser holds a DSH tab, and whether that tab is the focused one. */
+async function dshState() {
   try {
     const { host } = await settings()
     const origin = new URL(host).origin
+    if (focusedWindowId === undefined) {
+      focusedWindowId = (await api.windows.getLastFocused())?.id
+    }
     const tabs = await api.tabs.query({})
-    return tabs.some((tab) => typeof tab.url === 'string' && tab.url.startsWith(origin))
+    let hasDsh = false
+    let dshFocused = false
+    for (const tab of tabs) {
+      if (typeof tab.url !== 'string' || !tab.url.startsWith(origin)) continue
+      hasDsh = true
+      if (tab.active === true && tab.windowId === focusedWindowId) dshFocused = true
+    }
+    return { hasDsh, dshFocused }
   } catch {
-    return false
+    return { hasDsh: false, dshFocused: false }
   }
 }
+
+/** Push the current DSH state to the Host right after a focus/tab change. */
+function reportState() {
+  if (socket?.readyState !== 1) return
+  void dshState().then((state) => safeSend({ type: 'state', ...state }))
+}
+
+api.windows.onFocusChanged.addListener((windowId) => {
+  focusedWindowId = windowId
+  reportState()
+})
 
 /** Keep one WebSocket open: Chrome and Firefox both extend worker lifetime on socket traffic. */
 async function connectSocket() {
@@ -147,14 +172,14 @@ async function connectSocket() {
       // instance by the time the async lookup finishes.
       void (async () => {
         try {
-          const hasDsh = await dshTabOpen()
+          const state = await dshState()
           if (ws.readyState !== 1) return
           ws.send(JSON.stringify({
             type: 'hello',
             clientId: CLIENT_ID,
             token,
             browser: browserName(),
-            hasDsh,
+            ...state,
           }))
         } catch {
           // The socket went away while checking tabs; the close handler retries.
@@ -182,7 +207,7 @@ async function onSocketMessage(raw) {
     return
   }
   if (message?.type === 'ping') {
-    safeSend({ type: 'pong', hasDsh: await dshTabOpen() })
+    safeSend({ type: 'pong', ...(await dshState()) })
     return
   }
   if (message?.type !== 'job') return
@@ -247,11 +272,13 @@ api.runtime.onStartup.addListener(() => { void connectSocket(); void runLoop() }
 // Tab activity wakes the worker; any wake also resumes the loop from the top
 // level of this module, so these listeners mainly make the wake-up explicit.
 api.tabs.onActivated.addListener(() => {
+  reportState()
   void connectSocket()
   void runLoop()
 })
 api.tabs.onUpdated.addListener((_tabId, info) => {
   if (info.status !== 'complete') return
+  reportState()
   void connectSocket()
   void runLoop()
 })
