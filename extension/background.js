@@ -119,6 +119,7 @@ async function handle(job) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 let socket
+let looping = false
 
 /** True when this browser has the DSH page open somewhere. */
 async function dshTabOpen() {
@@ -139,24 +140,33 @@ async function connectSocket() {
   try {
     const { host, token } = await settings()
     url = `${host.replace(/^http/u, 'ws')}/dsh-browser-tabs/ws`
-    socket = new WebSocket(url)
-    socket.addEventListener('open', () => {
+    const ws = new WebSocket(url)
+    socket = ws
+    ws.addEventListener('open', () => {
+      // Capture this exact socket: `socket` may point at a newer CONNECTING
+      // instance by the time the async lookup finishes.
       void (async () => {
-        socket?.send(JSON.stringify({
-          type: 'hello',
-          clientId: CLIENT_ID,
-          token,
-          browser: browserName(),
-          hasDsh: await dshTabOpen(),
-        }))
+        try {
+          const hasDsh = await dshTabOpen()
+          if (ws.readyState !== 1) return
+          ws.send(JSON.stringify({
+            type: 'hello',
+            clientId: CLIENT_ID,
+            token,
+            browser: browserName(),
+            hasDsh,
+          }))
+        } catch {
+          // The socket went away while checking tabs; the close handler retries.
+        }
       })()
     })
-    socket.addEventListener('message', (event) => { void onSocketMessage(event.data) })
-    socket.addEventListener('close', () => {
-      socket = undefined
+    ws.addEventListener('message', (event) => { void onSocketMessage(event.data) })
+    ws.addEventListener('close', () => {
+      if (socket === ws) socket = undefined
       setTimeout(() => { void connectSocket() }, 1_500)
     })
-    socket.addEventListener('error', () => {})
+    ws.addEventListener('error', () => {})
   } catch {
     socket = undefined
     setTimeout(() => { void connectSocket() }, 3_000)

@@ -721,6 +721,9 @@ ok('不指定执行世界（两个浏览器默认都可用）', !backgroundText.
 ok('闹钟 1 分钟（Firefox 的下限，Chrome 也接受）', backgroundText.includes('periodInMinutes: 1'))
 ok('scripting 不可用时有明确报错', backgroundText.includes("this browser does not expose scripting.executeScript"))
 ok('用长轮询保持 worker 存活', backgroundText.includes('waitMs: POLL_HOLD_MS'))
+ok('looping 有声明（防 ReferenceError）', backgroundText.includes('let looping = false'))
+ok('hello 在捕获的 socket 上发送', backgroundText.includes('const ws = new WebSocket(url)') && backgroundText.includes('ws.readyState !== 1'))
+ok('hello 不依赖全局 socket 变量', !backgroundText.includes('socket?.send(JSON.stringify({\n          type: \'hello\''))
 ok('不再靠 setInterval 轮询', !backgroundText.includes('setInterval('))
 
 section('firefox build')
