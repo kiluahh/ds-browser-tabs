@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Browser tabs",
+    "description": "Read the rendered content of the current Chrome tab with /browser"
+  }
+}

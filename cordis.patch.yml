@@ -1,0 +1,13 @@
+# ds-browser-tabs · host bundle patch
+#
+# Mounts the Host half. The Chrome extension lives under ./extension and is
+# loaded by the user through chrome://extensions (it is not a DSH client half).
+#
+# Optional overrides:
+#   config:
+#     routePrefix: /dsh-browser-tabs
+#     token: ''
+#     timeoutMs: 8000
+- insert:
+    - id: ds-browser-tabs
+      name: 'ds-browser-tabs'

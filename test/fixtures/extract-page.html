@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><title>订单列表 · 测试</title></head>
+<body>
+  <nav><a href="/x">订单中心</a></nav>
+  <h1>订单列表</h1>
+  <p>共 3 笔订单。</p>
+  <div style="display:none">隐藏的 div 不应出现</div>
+  <div style="visibility:hidden">visibility 隐藏不应出现</div>
+  <div aria-hidden="true">aria 隐藏不应出现</div>
+  <script>window.__secret = '脚本内容不应出现'</script>
+  <ul>
+    <li>#1001 已发货</li>
+    <li>#1002 待付款</li>
+    <li>#1003 已完成</li>
+  </ul>
+  <form><input aria-label="搜索订单" value="1001"><textarea placeholder="备注">发货到前台</textarea></form>
+  <img alt="logo 图" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
+  <img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
+  <p>重复的一行</p>
+  <p>重复的一行</p>
+  <canvas id="chart" width="10" height="10"></canvas>
+  <footer>页脚：客服电话 400-000-0000</footer>
+  <pre id="receipt"></pre>
+  <script type="module">
+    import { extractRenderedText } from '../extract.js'
+    document.getElementById('receipt').textContent = JSON.stringify(extractRenderedText())
+  </script>
+</body></html>

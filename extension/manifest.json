@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "DSH Browser Tabs",
+  "version": "0.1.0",
+  "description": "Lets DeepSeek Harness read the rendered content of your open tabs.",
+  "permissions": ["scripting", "tabs", "storage", "alarms"],
+  "host_permissions": ["<all_urls>", "http://127.0.0.1/*", "http://localhost/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*"
+  },
+  "action": { "default_popup": "popup.html", "default_title": "DSH Browser Tabs" },
+  "icons": { "128": "icon.png" }
+}

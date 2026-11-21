@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "浏览器标签页",
+    "description": "用 /browser 读取当前 Chrome 标签页已渲染的内容"
+  }
+}
